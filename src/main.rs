@@ -70,6 +70,17 @@ impl Game {
     }
 }
 
+fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::GlutinFacade) -> glium::Texture2d {
+    use std::io::Cursor;
+    let image = image::load(Cursor::new(path),
+        image::PNG).unwrap().to_rgba();
+    let image_dimensions = image.dimensions();
+    let image = glium::texture::RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+
+    let texture = glium::texture::Texture2d::new(display, image).unwrap();
+    texture
+}
+
 fn main() {
     use glium::{DisplayBuild, Surface};
     use std::time::{Duration, Instant};
@@ -89,7 +100,7 @@ fn main() {
     out vec2 v_tex_coords;
 
     uniform mat4 model;
-    unifrom mat4 projection;
+    uniform mat4 projection;
 
     void main() {
         v_tex_coords = tex_coords;
