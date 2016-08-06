@@ -1,0 +1,9 @@
+[package]
+name = "breakout"
+version = "0.1.0"
+authors = ["Carl Foster <carl.john.foster@gmail.com>"]
+
+[dependencies]
+glium = "*"
+cgmath = "*"
+image = "*"
