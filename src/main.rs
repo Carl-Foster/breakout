@@ -75,7 +75,7 @@ fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::
     use std::path::Path;
     let image = image::open(Path::new(path)).unwrap().to_rgba();
     let image_dimensions = image.dimensions();
-    let image = glium::texture::RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+    let image = glium::texture::RawImage2d::from_raw_rgba(image.into_raw(), image_dimensions);
 
     let texture = glium::texture::Texture2d::new(display, image).unwrap();
     texture
@@ -84,11 +84,13 @@ fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::
 fn transform_model_matrix(position: cgmath::Vector2<f32>, scale: cgmath::Vector2<f32>, rotation: cgmath::Rad<f32>) -> cgmath::Matrix4<f32> {
     use cgmath::Matrix4;
     let translation_matrix: Matrix4<f32> = Matrix4::from_translation(position.extend(0.0));
-    let rotation_matrix: Matrix4<f32> = Matrix4::from_angle_z(rotation);
 
-    let scale = scale.extend(1.0);
-    let scale_matrix: Matrix4<f32> = Matrix4::from_nonuniform_scale(scale.x, scale.y, scale.z);
-    translation_matrix * rotation_matrix * scale_matrix
+    let first_trans_matrix: Matrix4<f32> = Matrix4::from_translation(cgmath::vec3(0.5 * scale.x, 0.5 * scale.y, 0.0));
+    let rotation_matrix: Matrix4<f32> = Matrix4::from_angle_z(rotation);
+    let second_trans_matrix: Matrix4<f32> = Matrix4::from_translation(cgmath::vec3(-0.5 * scale.x, -0.5 * scale.y, 0.0));
+
+    let scale_matrix: Matrix4<f32> = Matrix4::from_nonuniform_scale(scale.x, scale.y, 1.0);
+    translation_matrix * first_trans_matrix * rotation_matrix * second_trans_matrix *  scale_matrix
 }
 
 fn main() {
@@ -143,7 +145,7 @@ fn main() {
         ]).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
-    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(300.0, 400.0), cgmath::Rad::from(cgmath::deg(45.0f32)));
+    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(100.0, 100.0), cgmath::Rad::from(cgmath::deg(0.0f32)));
     let texture = load_texture_from_file("images/face.png", &display);
     let sprite_color = [0.0, 1.0, 0.0f32];
 
@@ -171,7 +173,7 @@ fn main() {
         last_frame = Instant::now();
         fps += 1;
         if last_frame.duration_since(last_second).as_secs() >= 1 {
-            println!("FPS: {:?}", fps);
+            // println!("FPS: {:?}", fps);
             last_second = Instant::now();
             fps = 0;
         }
