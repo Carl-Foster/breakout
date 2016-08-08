@@ -19,12 +19,13 @@ struct_events!{
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 struct Vertex {
     position: [f32; 2],
+    tex_coords: [f32; 2],
 }
 
-implement_vertex!(Vertex, position);
+implement_vertex!(Vertex, position, tex_coords);
 
 
 const SCREEN_WIDTH: u32 = 800;
@@ -71,9 +72,8 @@ impl Game {
 }
 
 fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::GlutinFacade) -> glium::Texture2d {
-    use std::io::Cursor;
-    let image = image::load(Cursor::new(path),
-        image::PNG).unwrap().to_rgba();
+    use std::path::Path;
+    let image = image::open(Path::new(path)).unwrap().to_rgba();
     let image_dimensions = image.dimensions();
     let image = glium::texture::RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
 
@@ -81,10 +81,19 @@ fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::
     texture
 }
 
+fn transform_model_matrix(position: cgmath::Vector2<f32>, scale: cgmath::Vector2<f32>, rotation: cgmath::Rad<f32>) -> cgmath::Matrix4<f32> {
+    use cgmath::Matrix4;
+    let translation_matrix: Matrix4<f32> = Matrix4::from_translation(position.extend(0.0));
+    let rotation_matrix: Matrix4<f32> = Matrix4::from_angle_z(rotation);
+
+    let scale = scale.extend(1.0);
+    let scale_matrix: Matrix4<f32> = Matrix4::from_nonuniform_scale(scale.x, scale.y, scale.z);
+    translation_matrix * rotation_matrix * scale_matrix
+}
+
 fn main() {
     use glium::{DisplayBuild, Surface};
-    use std::time::{Duration, Instant};
-    use std::thread::sleep;
+    use std::time::Instant;
 
     let display = glium::glutin::WindowBuilder::new()
         .with_dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -115,24 +124,37 @@ fn main() {
     out vec4 color;
     
     uniform sampler2D tex;
+    uniform vec3 sprite_color;
     
     void main() {
-        color = texture(tex, v_tex_coords);
+        color = vec4(sprite_color, 1.0) * texture(tex, v_tex_coords);
     }"#;
 
     let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
-    let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+    let indices = glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan);
 
-    let vertex_buffer = glium::VertexBuffer::new(&display,
+    let vertex_buffer = glium::vertex::VertexBuffer::new(&display,
         &[
-            Vertex{ position: [0.0, 0.0]},
-            Vertex{ position: [0.0, 1.0]},
-            Vertex{ position: [1.0, 0.0]},
-            Vertex{ position: [1.0, 1.0]},
-        ]);
+            Vertex{ position: [0.0, 1.0], tex_coords: [0.0, 1.0]},
+            Vertex{ position: [0.0, 0.0], tex_coords: [0.0, 0.0]},
+            Vertex{ position: [1.0, 0.0], tex_coords: [1.0, 0.0]},
+            Vertex{ position: [1.0, 1.0], tex_coords: [1.0, 1.0]},
+        ]).unwrap();
 
-    let mut breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT);
+    let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(300.0, 400.0), cgmath::Rad::from(cgmath::deg(45.0f32)));
+    let texture = load_texture_from_file("images/face.png", &display);
+    let sprite_color = [0.0, 1.0, 0.0f32];
+
+    let uniforms = uniform! {
+        model: Into::<[[f32; 4]; 4]>::into(model),
+        projection: Into::<[[f32; 4]; 4]>::into(perspective),
+        tex: &texture,
+        sprite_color: sprite_color
+    };
+
+    let breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT);
 
     breakout.init();
 
@@ -143,10 +165,6 @@ fn main() {
     let mut fps = 0;
 
     loop {
-        if events.now.quit || events.now.key_escape == Some(true) {
-            return;
-        }
-        events.poll(&display);
 
         let dt = last_frame.elapsed().subsec_nanos() as f32 / 1.0e6; // ns -> ms
         let elapsed = dt / 1.0e3; // ms -> s
@@ -167,6 +185,18 @@ fn main() {
         target.clear_color(0.0, 0.0, 0.0, 1.0);
         breakout.render();
 
+        target.draw(&vertex_buffer,
+            &indices,
+            &program,
+            &uniforms,
+            &Default::default())
+        .unwrap();
+
         target.finish().unwrap();
+
+        events.poll(&display);
+        if events.now.quit || events.now.key_escape == Some(true) {
+            return;
+        }
     }
 }
