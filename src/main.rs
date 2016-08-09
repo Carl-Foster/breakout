@@ -81,6 +81,15 @@ fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::
     texture
 }
 
+fn load_sampler_from_texture<'t>(tex: &'t glium::Texture2d) -> glium::uniforms::Sampler<'t, glium::texture::Texture2d> {
+    use glium::uniforms::{Sampler, SamplerWrapFunction, MinifySamplerFilter, MagnifySamplerFilter};
+    let sampler = Sampler::new(tex)
+        .wrap_function(SamplerWrapFunction::Repeat)
+        .minify_filter(MinifySamplerFilter::Linear)
+        .magnify_filter(MagnifySamplerFilter::Linear);
+    sampler
+}
+
 fn transform_model_matrix(position: cgmath::Vector2<f32>, scale: cgmath::Vector2<f32>, rotation: cgmath::Rad<f32>) -> cgmath::Matrix4<f32> {
     use cgmath::Matrix4;
     let translation_matrix: Matrix4<f32> = Matrix4::from_translation(position.extend(0.0));
@@ -147,15 +156,13 @@ fn main() {
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
     let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(300.0, 400.0), cgmath::Rad::from(cgmath::deg(45.0f32)));
     let texture = load_texture_from_file("images/face.png", &display);
+    let sampler = load_sampler_from_texture(&texture);
     let sprite_color = [0.0, 1.0, 0.0f32];
 
     let uniforms = uniform! {
         model: Into::<[[f32; 4]; 4]>::into(model),
         projection: Into::<[[f32; 4]; 4]>::into(perspective),
-        tex: glium::uniforms::Sampler::new(&texture)
-            .wrap_function(glium::uniforms::SamplerWrapFunction::Repeat)
-            .minify_filter(glium::uniforms::MinifySamplerFilter::Linear)
-            .magnify_filter(glium::uniforms::MagnifySamplerFilter::Linear),
+        tex: sampler,
         sprite_color: sprite_color
     };
 
