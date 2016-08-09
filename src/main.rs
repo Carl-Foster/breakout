@@ -129,7 +129,7 @@ fn main() {
     uniform vec3 sprite_color;
     
     void main() {
-        color = vec4(sprite_color, 1.0) * texture(tex, v_tex_coords);
+        color = texture(tex, v_tex_coords) * vec4(sprite_color, 1.0);
     }"#;
 
     let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
@@ -145,15 +145,23 @@ fn main() {
         ]).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
-    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(100.0, 100.0), cgmath::Rad::from(cgmath::deg(0.0f32)));
+    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(300.0, 400.0), cgmath::Rad::from(cgmath::deg(45.0f32)));
     let texture = load_texture_from_file("images/face.png", &display);
     let sprite_color = [0.0, 1.0, 0.0f32];
 
     let uniforms = uniform! {
         model: Into::<[[f32; 4]; 4]>::into(model),
         projection: Into::<[[f32; 4]; 4]>::into(perspective),
-        tex: &texture,
+        tex: glium::uniforms::Sampler::new(&texture)
+            .wrap_function(glium::uniforms::SamplerWrapFunction::Repeat)
+            .minify_filter(glium::uniforms::MinifySamplerFilter::Linear)
+            .magnify_filter(glium::uniforms::MagnifySamplerFilter::Linear),
         sprite_color: sprite_color
+    };
+
+    let params = glium::DrawParameters {
+        blend: glium::Blend::alpha_blending(),
+        .. Default::default()
     };
 
     let breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -191,7 +199,7 @@ fn main() {
             &indices,
             &program,
             &uniforms,
-            &Default::default())
+            &params)
         .unwrap();
 
         target.finish().unwrap();
