@@ -6,6 +6,8 @@ extern crate image;
 #[macro_use]
 mod events;
 
+use cgmath::{Vector2, Vector3, Matrix4};
+
 struct_events!{
     keyboard: {
         key_escape: Escape,
@@ -68,6 +70,36 @@ impl Game {
 
     fn render(&self) {
         // println!("Render Game");
+    }
+}
+
+#[derive(Debug)]
+struct GameObject {
+    pub position: Vector2<f32>,
+    pub size: Vector2<f32>,
+    pub velocity: Vector2<f32>,
+    pub color: Vector3<f32>,
+    pub rotation: cgmath::Rad<f32>,
+    
+    pub is_solid: bool,
+    pub destroyed: bool,
+
+    sprite: Option<glium::texture::Texture2d>,
+}
+
+impl GameObject {
+    pub fn new() -> GameObject {
+        use cgmath::{vec2, vec3};
+        GameObject {
+            position: vec2(0, 0),
+            size: vec2(1.0, 1.0),
+            velocity: vec2(0.0, 0.0),
+            color: vec3(1.0, 1.0, 1.0),
+            rotation: cgmath::rad(0.0),
+            is_solid: false,
+            destroyed: false,
+            sprite: None,
+        }
     }
 }
 
