@@ -7,6 +7,9 @@ extern crate image;
 mod events;
 
 use cgmath::{Vector2, Vector3, Matrix4};
+use cgmath::{vec2, vec3, rad};
+use glium::texture::Texture2d;
+use glium::backend::glutin_backend::GlutinFacade;
 
 struct_events!{
     keyboard: {
@@ -40,24 +43,154 @@ enum GameState {
     Win,
 }
 
+
+
+#[derive(Debug)]
+struct GameObject {
+    pub position: Vector2<f32>,
+    pub size: Vector2<f32>,
+    pub velocity: Vector2<f32>,
+    pub color: Vector3<f32>,
+    pub rotation: cgmath::Rad<f32>,
+    
+    pub is_solid: bool,
+    pub destroyed: bool,
+
+    texture_path: String,
+}
+
+impl GameObject {
+    pub fn new(position: Vector2<f32>, size: Vector2<f32>, color: Vector3<f32>, path: &str) -> GameObject {
+        use cgmath::{vec2, vec3};
+        GameObject {
+            position: position,
+            size: size,
+            velocity: vec2(0.0, 0.0),
+            color: color,
+            rotation: cgmath::rad(0.0),
+            is_solid: false,
+            destroyed: false,
+            texture_path: path.to_string(),
+        }
+    }
+
+    fn get_matrix(&self) -> Matrix4<f32> {
+        let matrix = transform_model_matrix(self.position, self.size, self.rotation);
+        matrix
+    }
+}
+
+#[derive(Debug)]
+struct GameLevel {
+    pub bricks: Vec<GameObject>,
+}
+
+impl GameLevel {
+    pub fn new(path: &str, level_width: u32, level_height: u32) -> Result<GameLevel, std::io::Error> {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::io::prelude::*;
+        let mut tile_data = Vec::new();
+        // Load from file 
+        let f = try!(File::open(path));
+        let reader = BufReader::new(f);
+
+        let lines = reader.lines().map(|l| l.unwrap());
+
+        for line in lines {
+            let other_line = line.clone();
+            tile_data.push(other_line.split_whitespace().map(|s| String::from(s)).collect());
+        }
+
+        Ok(
+            GameLevel {
+                bricks: GameLevel::init_data(tile_data, level_width, level_height),
+            }
+        )
+    }
+
+    pub fn init_data(data: Vec<Vec<String>>, level_width: u32, level_height: u32) -> Vec<GameObject> {
+        use cgmath::{vec2, vec3};
+        let height = data.len() as f32;
+        let width = data[0].len() as f32;
+
+        let mut bricks: Vec<GameObject> = Vec::new();
+
+        let unit_width: f32 = level_width as f32 / width;
+        let unit_height: f32 = level_height as f32 / height;
+
+        let mut y_pos = 0.0;
+        for row in data {
+            let mut x_pos = 0.0;
+            for col in row {
+                println!("{:?}", col);
+                let number = col.parse::<u8>().unwrap();
+                if number == 1 {
+                    let position = vec2(unit_width * x_pos, unit_height * y_pos);
+                    let size = vec2(unit_width, unit_height);
+                    let color = vec3(0.8, 0.8, 0.7);
+                    let mut object = GameObject::new(position, size, color, "block_solid");
+                    object.is_solid = true;
+                    bricks.push(object);
+                } else if number > 1 {
+                    let color = {
+                        match number {
+                            2 => vec3(0.2, 0.6, 1.0),
+                            3 => vec3(0.0, 0.7, 0.0),
+                            4 => vec3(0.8, 0.8, 0.4),
+                            5 => vec3(1.0, 0.5, 0.0),
+                            _ => vec3(1.0, 1.0, 1.0),
+                        }
+                    };
+
+                    let position = vec2(unit_width * x_pos, unit_height * y_pos);
+                    let size = vec2(unit_width, unit_height);
+
+                    let object = GameObject::new(position, size, color, "block");
+                    bricks.push(object);
+                }
+                x_pos += 1.0;
+            }
+            y_pos += 1.0;
+        }
+        bricks
+    }
+
+    fn is_completed() -> bool {
+        unimplemented!();   
+    }
+}
+
 #[derive(Debug)]
 struct Game {
     state: GameState,
     width: u32,
     height: u32,
+    level: usize,
+    levels: Vec<GameLevel>,
+
+    resources: ResourceManager,
 }
 
 impl Game {
-    pub fn new(width: u32, height: u32) -> Game {
+    pub fn new(width: u32, height: u32, display: &GlutinFacade) -> Game {
+        let mut resources = ResourceManager::new();
+        resources.load_texture("textures/background.jpg", "background", display);
+        resources.load_texture("textures/block.png", "block", display);
+        resources.load_texture("textures/block_solid.png", "block_solid", display);
+        // Load levels
+        let mut levels = Vec::new();
+        levels.push(GameLevel::new("levels/one.lvl", width, height / 2).unwrap());
+
         Game {
             state: GameState::Menu,
             width: width,
             height: height,
-        }
-    }
+            level: 0,
+            levels: levels,
 
-    fn init(&self) {
-        println!("Init Game");
+            resources: resources,
+        }
     }
 
     fn process_input(&self, events: &Events, elapsed: f32) {
@@ -74,109 +207,28 @@ impl Game {
 }
 
 #[derive(Debug)]
-struct GameObject {
-    pub position: Vector2<f32>,
-    pub size: Vector2<f32>,
-    pub velocity: Vector2<f32>,
-    pub color: Vector3<f32>,
-    pub rotation: cgmath::Rad<f32>,
-    
-    pub is_solid: bool,
-    pub destroyed: bool,
-
-    sprite: Option<glium::texture::Texture2d>,
-    texture_path: String,
+struct ResourceManager {
+    pub textures: std::collections::HashMap<String, Texture2d>,
 }
 
-impl GameObject {
-    pub fn new(position: Vector2<f32>, size: Vector2<f32>, color: Vector3<f32>, path: &str) -> GameObject {
-        use cgmath::{vec2, vec3};
-        GameObject {
-            position: vec2(0.0, 0.0),
-            size: vec2(1.0, 1.0),
-            velocity: vec2(0.0, 0.0),
-            color: vec3(1.0, 1.0, 1.0),
-            rotation: cgmath::rad(0.0),
-            is_solid: false,
-            destroyed: false,
-            sprite: None,
-            texture_path: path.to_string(),
+impl ResourceManager {
+    pub fn new() -> ResourceManager {
+        use std::collections::HashMap;
+        ResourceManager {
+            textures: HashMap::new(),
         }
     }
 
-    fn get_matrix(&self) -> Matrix4<f32> {
-        let matrix = transform_model_matrix(self.position, self.size, self.rotation);
-        matrix
+    pub fn load_texture (&mut self, path: &str, key: &str, display: &GlutinFacade) {
+        self.textures.insert(key.to_string(), load_texture_from_file(path, display));
+    }
+
+    pub fn get_texture(&self, key: &str) -> &glium::texture::Texture2d {
+        self.textures.get(key).unwrap()
     }
 }
 
-struct GameLevel {
-    pub bricks: Vec<GameObject>,
-}
-
-impl GameLevel {
-    pub fn new() -> GameLevel {
-        GameLevel {
-            bricks: Vec::new(),
-        }
-    }
-
-    fn init_data(&mut self, data: Vec<Vec<String>>, level_width: u16, level_height: u16) {
-        use cgmath::{vec2, vec3};
-        let height = data.len() as f32;
-        let width = data[0].len() as f32;
-
-        let unit_width: f32 = level_width as f32 / width;
-        let unit_height: f32 = level_height as f32 / height;
-
-        let mut x_pos = 0.0;
-        let mut y_pos = 0.0;
-        for row in data {
-            x_pos = 0.0;
-            for col in row {
-                let number = col.parse::<u8>().unwrap();
-                if number == 1 {
-                    let position = vec2(unit_width * x_pos, unit_height * y_pos);
-                    let size = vec2(unit_width, unit_height);
-                    let object = GameObject::new(position, size, vec3(0.8, 0.8, 0.7), "block_solid");
-                    self.bricks.push(object);
-                } else if number > 1 {
-
-                }
-            }
-        }
-    }
- 
-    fn load(&mut self, path: &str, level_width: u16, level_height: u16) -> Result<(), std::io::Error> {
-        use std::fs::File;
-        use std::io::BufReader;
-        use std::io::prelude::*;
-        let mut tile_data = Vec::new();
-        // Load from file 
-        let f = try!(File::open(path));
-        let mut reader = BufReader::new(f);
-
-        let lines = reader.lines().map(|l| l.unwrap());
-
-        for line in lines {
-            let other_line = line.clone();
-            tile_data.push(other_line.split(' ').map(|s| String::from(s)).collect());
-        }
-
-        if tile_data.len() > 0 {
-            self.init_data(tile_data, level_width, level_height);
-        }
-        Ok(())
-    }
-
-    fn is_completed() -> bool {
-        unimplemented!();   
-    }
-
-   
-}
-
-fn load_texture_from_file(path: &str, display: &glium::backend::glutin_backend::GlutinFacade) -> glium::Texture2d {
+fn load_texture_from_file(path: &str, display: &GlutinFacade) -> glium::Texture2d {
     use std::path::Path;
     let image = image::open(Path::new(path)).unwrap().to_rgba();
     let image_dimensions = image.dimensions();
@@ -258,26 +310,13 @@ fn main() {
         ]).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
-    let model: cgmath::Matrix4<f32> = transform_model_matrix(cgmath::vec2(200.0, 200.0), cgmath::vec2(300.0, 400.0), cgmath::Rad::from(cgmath::deg(45.0f32)));
-    let texture = load_texture_from_file("images/face.png", &display);
-    let sampler = load_sampler_from_texture(&texture);
-    let sprite_color = [0.0, 1.0, 0.0f32];
-
-    let uniforms = uniform! {
-        model: Into::<[[f32; 4]; 4]>::into(model),
-        projection: Into::<[[f32; 4]; 4]>::into(perspective),
-        tex: sampler,
-        sprite_color: sprite_color
-    };
 
     let params = glium::DrawParameters {
         blend: glium::Blend::alpha_blending(),
         .. Default::default()
     };
 
-    let breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT);
-
-    breakout.init();
+    let mut breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT, &display);
 
     let mut events = Events::new();
 
@@ -304,16 +343,46 @@ fn main() {
         let mut target = display.draw();
         // Clears to black
         target.clear_color(0.0, 0.0, 0.0, 1.0);
-        breakout.render();
 
+        // Draw background
+        let model = transform_model_matrix(vec2(0.0, 0.0), vec2(breakout.width as f32, breakout.height as f32), cgmath::rad(0.0));
+        let sampler = load_sampler_from_texture(breakout.resources.get_texture("background"));
+        let sprite_color = vec3(1.0, 1.0, 1.0);
 
+        let uniforms = uniform! {
+                model: Into::<[[f32; 4]; 4]>::into(model),
+                projection: Into::<[[f32; 4]; 4]>::into(perspective),
+                tex: sampler,
+                sprite_color: Into::<[f32; 3]>::into(sprite_color)
+            };
 
         target.draw(&vertex_buffer,
-            &indices,
-            &program,
-            &uniforms,
-            &params)
-        .unwrap();
+                &indices,
+                &program,
+                &uniforms,
+                &params)
+            .unwrap();
+
+
+        for brick in &breakout.levels[breakout.level].bricks {
+            let model: Matrix4<f32> = brick.get_matrix();
+            let sampler = load_sampler_from_texture(breakout.resources.get_texture(&brick.texture_path));
+            let sprite_color = brick.color; 
+            
+            let uniforms = uniform! {
+                model: Into::<[[f32; 4]; 4]>::into(model),
+                projection: Into::<[[f32; 4]; 4]>::into(perspective),
+                tex: sampler,
+                sprite_color: Into::<[f32; 3]>::into(sprite_color)
+            };
+
+            target.draw(&vertex_buffer,
+                &indices,
+                &program,
+                &uniforms,
+                &params)
+            .unwrap();
+        }      
 
         target.finish().unwrap();
 
