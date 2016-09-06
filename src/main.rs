@@ -35,6 +35,8 @@ implement_vertex!(Vertex, position, tex_coords);
 
 const SCREEN_WIDTH: u32 = 800;
 const SCREEN_HEIGHT: u32 = 600;
+const PLAYER_SIZE: Vector2<f32> = Vector2{x: 100.0, y: 20.0};
+const PLAYER_VELOCIT: f32 = 500.0;
 
 #[derive(Debug)]
 enum GameState {
@@ -169,6 +171,8 @@ struct Game {
     level: usize,
     levels: Vec<GameLevel>,
 
+    player: GameObject,
+
     resources: ResourceManager,
 }
 
@@ -178,9 +182,16 @@ impl Game {
         resources.load_texture("textures/background.jpg", "background", display);
         resources.load_texture("textures/block.png", "block", display);
         resources.load_texture("textures/block_solid.png", "block_solid", display);
+        resources.load_texture("textures/paddle.png", "paddle", display);
         // Load levels
         let mut levels = Vec::new();
         levels.push(GameLevel::new("levels/one.lvl", width, height / 2).unwrap());
+
+        let player = GameObject::new(
+            vec2(width as f32 / 2.0 - PLAYER_SIZE.x, height as f32 - PLAYER_SIZE.y),
+            PLAYER_SIZE,
+            vec3(1.0, 1.0, 1.0),
+            "paddle");
 
         Game {
             state: GameState::Menu,
@@ -189,20 +200,10 @@ impl Game {
             level: 0,
             levels: levels,
 
+            player: player,
+
             resources: resources,
         }
-    }
-
-    fn process_input(&self, events: &Events, elapsed: f32) {
-        // println!("Process Input for Game");
-    }
-
-    fn update(&self, elapsed: f32) {
-        // println!("Update Game");
-    }
-
-    fn render(&self) {
-        // println!("Render Game");
     }
 }
 
@@ -316,7 +317,7 @@ fn main() {
         .. Default::default()
     };
 
-    let mut breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT, &display);
+    let breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT, &display);
 
     let mut events = Events::new();
 
@@ -335,10 +336,6 @@ fn main() {
             last_second = Instant::now();
             fps = 0;
         }
-
-        breakout.process_input(&events, elapsed);
-
-        breakout.update(elapsed);
 
         let mut target = display.draw();
         // Clears to black
@@ -363,7 +360,7 @@ fn main() {
                 &params)
             .unwrap();
 
-
+        // Draw bricks
         for brick in &breakout.levels[breakout.level].bricks {
             let model: Matrix4<f32> = brick.get_matrix();
             let sampler = load_sampler_from_texture(breakout.resources.get_texture(&brick.texture_path));
