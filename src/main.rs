@@ -269,6 +269,22 @@ fn main() {
         .build_glium()
         .unwrap();
 
+
+    // Load textures into array
+    let textures = vec!["background.jpg", "block.png", "block_solid.png", "paddle.png"];
+    let textures = {
+        let images = textures.into_iter().map(|path| {
+            use std::path::Path;
+            let image = image::open(Path::new(path)).unwrap().to_rgba();
+            let image_dimensions = image.dimensions();
+            glium::texture::RawImage2d::from_raw_rgba(image.into_raw(), image_dimensions)
+        }).collect::<Vec<_>>();
+
+        glium::texture::Texture2dArray::new(&display, images).unwrap()
+    };
+
+    // Load up level data from file into Vertex and Index buffers
+
     let vertex_shader_src = r#"
     #version 140
 
