@@ -24,13 +24,6 @@ struct_events!{
     }
 }
 
-#[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 2],
-    tex_coords: [f32; 2],
-}
-
-implement_vertex!(Vertex, position, tex_coords);
 
 
 const SCREEN_WIDTH: u32 = 800;
@@ -269,13 +262,22 @@ fn main() {
         .build_glium()
         .unwrap();
 
-
     // Load textures into array
-    let textures = vec!["background.jpg", "block.png", "block_solid.png", "paddle.png"];
+    use std::collections::HashMap;
+    let texture_dict: HashMap<&str, u32> = {
+        let mut map: HashMap<&str, u32> = HashMap::new();
+        let paths = vec!["block.png", "block_solid.png"];
+        for (num, path) in (0u32..).zip(paths.into_iter()) {
+            map.insert(path, num);
+        }
+        map
+    };
     let textures = {
-        let images = textures.into_iter().map(|path| {
+        let images = texture_dict.iter().map(|(path, _)| {
             use std::path::Path;
-            let image = image::open(Path::new(path)).unwrap().to_rgba();
+            let folder = "textures/".to_string();
+            let path = folder + &path;
+            let image = image::open(Path::new(&path)).unwrap().to_rgba();
             let image_dimensions = image.dimensions();
             glium::texture::RawImage2d::from_raw_rgba(image.into_raw(), image_dimensions)
         }).collect::<Vec<_>>();
@@ -284,20 +286,109 @@ fn main() {
     };
 
     // Load up level data from file into Vertex and Index buffers
+    let level_data: Vec<Vec<String>> = {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::io::prelude::*;
+        // Load from file 
+        let f = File::open("levels/one.lvl").unwrap();
+        let reader = BufReader::new(f);
+        reader.lines()
+            .map(|l| l.unwrap())
+            .map(|line| 
+                line.clone()
+                    .split_whitespace()
+                    .map(|s| String::from(s))
+                    .collect())
+            .collect()
+        };
+
+    let (level_rows, level_columns) = (level_data.len(), level_data[0].len());
+
+    let (mut vertex_buffer, index_buffer) = {
+        #[derive(Copy, Clone)]
+        struct Vertex {
+            position: [f32; 2],
+            tex_id: u32,
+            color: [f32; 3],
+        }
+
+        implement_vertex!(Vertex, position, tex_id, color);
+
+        let block_count = level_rows * level_columns;
+
+        let mut vb_data: Vec<Vertex> = Vec::with_capacity(block_count);
+        let mut ib_data = Vec::with_capacity(block_count * 6);
+
+        let (unit_width, unit_height) = (SCREEN_WIDTH, SCREEN_HEIGHT / 2);
+
+        for (row, line) in level_data.into_iter().enumerate() {
+            for (column, value) in line.into_iter().enumerate() {
+                let value = value.parse::<u8>().unwrap();
+                if value == 0 { continue; }
+
+                let position = [(unit_width * column as u32) as f32, (unit_height * row as u32) as f32];
+                let tex_id = match value {
+                    1 => texture_dict.get("block.png").unwrap(),
+                    2 ... 5 => texture_dict.get("block_solid.png").unwrap(),
+                    _ => texture_dict.get("block.png").unwrap(),
+                };
+                let color = {
+                        match value {
+                            1 => [0.8, 0.8, 0.7],
+                            2 => [0.2, 0.6, 1.0],
+                            3 => [0.0, 0.7, 0.0],
+                            4 => [0.8, 0.8, 0.4],
+                            5 => [1.0, 0.5, 0.0],
+                            _ => [1.0, 1.0, 1.0],
+                        }
+                    };
+                
+                vb_data.push( Vertex { position: position, tex_id: tex_id.clone(), color: color});
+
+                let num = (row * level_columns + column) as u16;
+                ib_data.push(num * 4);
+                ib_data.push(num * 4 + 1);
+                ib_data.push(num * 4 + 2);
+                ib_data.push(num * 4 + 1);
+                ib_data.push(num * 4 + 3);
+                ib_data.push(num * 4 + 2);
+            }
+        }
+
+        let vb = glium::VertexBuffer::dynamic(&display, &vb_data).unwrap();
+        let ib = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &ib_data).unwrap();
+
+        (vb, ib)
+    };
 
     let vertex_shader_src = r#"
     #version 140
 
     in vec2 position;
-    in vec2 tex_coords;
-    out vec2 v_tex_coords;
+    in uint tex_id;
+    in vec3 color;
 
-    uniform mat4 model;
+    out vec2 v_tex_coords;
+    out vec3 v_color;
+    flat out uint v_tex_id;
+
     uniform mat4 projection;
 
     void main() {
-        v_tex_coords = tex_coords;
-        gl_Position = projection * model * vec4(position, 0.0, 1.0);
+        v_color = color;
+        v_tex_id = tex_id;
+        if (gl_VertexID % 4 == 0) {
+            v_tex_coords = vec2(0.0, 1.0);
+        } else if (gl_VertexID % 4 == 1) {
+            v_tex_coords = vec2(1.0, 1.0);
+        } else if (gl_VertexID % 4 == 2) {
+            v_tex_coords = vec2(0.0, 0.0);
+        } else {
+            v_tex_coords = vec2(1.0, 0.0);
+        }
+        
+        gl_Position = projection * vec4(position, 0.0, 1.0);
     }
     "#;
 
@@ -305,26 +396,18 @@ fn main() {
     #version 140
     
     in vec2 v_tex_coords;
+    flat in uint v_tex_id;
+    in vec3 v_color;
     out vec4 color;
     
-    uniform sampler2D tex;
+    uniform sampler2DArray tex;
     uniform vec3 sprite_color;
     
     void main() {
-        color = texture(tex, v_tex_coords) * vec4(sprite_color, 1.0);
+        color = texture(tex, vec3(v_tex_coords, float(v_tex_id))) * vec4(v_color, 1.0);
     }"#;
 
     let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
-
-    let indices = glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan);
-
-    let vertex_buffer = glium::vertex::VertexBuffer::new(&display,
-        &[
-            Vertex{ position: [0.0, 1.0], tex_coords: [0.0, 1.0]},
-            Vertex{ position: [0.0, 0.0], tex_coords: [0.0, 0.0]},
-            Vertex{ position: [1.0, 0.0], tex_coords: [1.0, 0.0]},
-            Vertex{ position: [1.0, 1.0], tex_coords: [1.0, 1.0]},
-        ]).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
 
@@ -357,45 +440,17 @@ fn main() {
         // Clears to black
         target.clear_color(0.0, 0.0, 0.0, 1.0);
 
-        // Draw background
-        let model = transform_model_matrix(vec2(0.0, 0.0), vec2(breakout.width as f32, breakout.height as f32), cgmath::rad(0.0));
-        let sampler = load_sampler_from_texture(breakout.resources.get_texture("background"));
-        let sprite_color = vec3(1.0, 1.0, 1.0);
-
         let uniforms = uniform! {
-                model: Into::<[[f32; 4]; 4]>::into(model),
-                projection: Into::<[[f32; 4]; 4]>::into(perspective),
-                tex: sampler,
-                sprite_color: Into::<[f32; 3]>::into(sprite_color)
-            };
+            tex: &textures,
+            projection: Into::<[[f32; 4]; 4]>::into(perspective),
+        };
 
         target.draw(&vertex_buffer,
-                &indices,
+                &index_buffer,
                 &program,
                 &uniforms,
                 &params)
-            .unwrap();
-
-        // Draw bricks
-        for brick in &breakout.levels[breakout.level].bricks {
-            let model: Matrix4<f32> = brick.get_matrix();
-            let sampler = load_sampler_from_texture(breakout.resources.get_texture(&brick.texture_path));
-            let sprite_color = brick.color; 
-            
-            let uniforms = uniform! {
-                model: Into::<[[f32; 4]; 4]>::into(model),
-                projection: Into::<[[f32; 4]; 4]>::into(perspective),
-                tex: sampler,
-                sprite_color: Into::<[f32; 3]>::into(sprite_color)
-            };
-
-            target.draw(&vertex_buffer,
-                &indices,
-                &program,
-                &uniforms,
-                &params)
-            .unwrap();
-        }      
+            .unwrap();  
 
         target.finish().unwrap();
 
