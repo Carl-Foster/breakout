@@ -303,9 +303,9 @@ fn main() {
             .collect()
         };
 
-    let (level_rows, level_columns) = (level_data.len(), level_data[0].len());
+    let (level_rows, level_columns) = (level_data.len() as f32, level_data[0].len() as f32);
 
-    let (mut vertex_buffer, index_buffer) = {
+    let (vertex_buffer, index_buffer) = {
         #[derive(Copy, Clone)]
         struct Vertex {
             position: [f32; 2],
@@ -315,19 +315,23 @@ fn main() {
 
         implement_vertex!(Vertex, position, tex_id, color);
 
-        let block_count = level_rows * level_columns;
+        let block_count = (level_rows * level_columns) as usize;
 
-        let mut vb_data: Vec<Vertex> = Vec::with_capacity(block_count);
+        let mut vb_data: Vec<Vertex> = Vec::with_capacity(block_count * 4);
         let mut ib_data = Vec::with_capacity(block_count * 6);
 
-        let (unit_width, unit_height) = (SCREEN_WIDTH, SCREEN_HEIGHT / 2);
-
-        for (row, line) in level_data.into_iter().enumerate() {
-            for (column, value) in line.into_iter().enumerate() {
+        let (unit_width, unit_height) = (SCREEN_WIDTH as f32 / level_columns, (SCREEN_HEIGHT as f32/ 2.0) / level_rows);
+        let mut block_counter = 0;
+        for (y_pos, line) in level_data.into_iter().enumerate() {
+            for (x_pos, value) in line.into_iter().enumerate() {
                 let value = value.parse::<u8>().unwrap();
                 if value == 0 { continue; }
+                
 
-                let position = [(unit_width * column as u32) as f32, (unit_height * row as u32) as f32];
+                let left = unit_width * x_pos as f32;
+                let right = left + unit_width;
+                let top = unit_height * y_pos as f32;
+                let bottom = top + unit_height;
                 let tex_id = match value {
                     1 => texture_dict.get("block.png").unwrap(),
                     2 ... 5 => texture_dict.get("block_solid.png").unwrap(),
@@ -344,15 +348,20 @@ fn main() {
                         }
                     };
                 
-                vb_data.push( Vertex { position: position, tex_id: tex_id.clone(), color: color});
+                vb_data.push( Vertex { position: [left, top], tex_id: tex_id.clone(), color: color});
+                vb_data.push( Vertex { position: [right, top], tex_id: tex_id.clone(), color: color});
+                vb_data.push( Vertex { position: [left, bottom], tex_id: tex_id.clone(), color: color});
+                vb_data.push( Vertex { position: [right, bottom], tex_id: tex_id.clone(), color: color});
 
-                let num = (row * level_columns + column) as u16;
+                let num = block_counter as u16;
                 ib_data.push(num * 4);
                 ib_data.push(num * 4 + 1);
                 ib_data.push(num * 4 + 2);
                 ib_data.push(num * 4 + 1);
                 ib_data.push(num * 4 + 3);
                 ib_data.push(num * 4 + 2);
+
+                block_counter += 1;
             }
         }
 
@@ -415,8 +424,6 @@ fn main() {
         blend: glium::Blend::alpha_blending(),
         .. Default::default()
     };
-
-    let breakout = Game::new(SCREEN_WIDTH, SCREEN_HEIGHT, &display);
 
     let mut events = Events::new();
 
