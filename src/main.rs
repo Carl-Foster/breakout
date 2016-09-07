@@ -365,7 +365,7 @@ fn main() {
             }
         }
 
-        let vb = glium::VertexBuffer::dynamic(&display, &vb_data).unwrap();
+        let vb = glium::VertexBuffer::new(&display, &vb_data).unwrap();
         let ib = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &ib_data).unwrap();
 
         (vb, ib)
@@ -438,7 +438,7 @@ fn main() {
         last_frame = Instant::now();
         fps += 1;
         if last_frame.duration_since(last_second).as_secs() >= 1 {
-            // println!("FPS: {:?}", fps);
+            println!("FPS: {:?}", fps);
             last_second = Instant::now();
             fps = 0;
         }
