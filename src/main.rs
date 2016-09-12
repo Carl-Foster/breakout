@@ -416,7 +416,52 @@ fn main() {
         color = texture(tex, vec3(v_tex_coords, float(v_tex_id))) * vec4(v_color, 1.0);
     }"#;
 
-    let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let block_program = glium::program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+
+    /* Add in vertex buffer for general objects
+     * Could go dynamic or go the old way with the object model
+     * being uploaded to uniform each draw call
+     */
+
+    let vertex_shader_src = r#"
+        #version 140
+
+        in vec2 position;
+
+        uniform mat4 projection;
+
+        out vec2 v_tex_coords;
+
+        void main() {
+
+            if (gl_VertexID % 4 == 0) {
+                v_tex_coords = vec2(0.0, 1.0);
+            } else if (gl_VertexID % 4 == 1) {
+                v_tex_coords = vec2(1.0, 1.0);
+            } else if (gl_VertexID % 4 == 2) {
+                v_tex_coords = vec2(0.0, 0.0);
+            } else {
+                v_tex_coords = vec2(1.0, 0.0);
+            }
+            gl_Position = projection * vec4(position, 0.0, 1.0);
+        }
+    "#;
+
+    let fragment_shader_src = r#"
+        #version 140
+
+        in vec2 v_tex_coords;
+
+        uniform sampler2d tex;
+        
+        out vec4 color;
+
+        void main() {
+            color = texture(tex, v_tex_coords);
+        }
+    "#;
+
+    let default_program = glium::program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
 
@@ -454,7 +499,7 @@ fn main() {
 
         target.draw(&vertex_buffer,
                 &index_buffer,
-                &program,
+                &block_program,
                 &uniforms,
                 &params)
             .unwrap();  
