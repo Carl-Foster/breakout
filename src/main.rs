@@ -416,12 +416,32 @@ fn main() {
         color = texture(tex, vec3(v_tex_coords, float(v_tex_id))) * vec4(v_color, 1.0);
     }"#;
 
-    let block_program = glium::program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let block_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
     /* Add in vertex buffer for general objects
      * Could go dynamic or go the old way with the object model
      * being uploaded to uniform each draw call
+     * If it were to be dynamic, would only draw certain slices of an index_buffer
+     * at each draw call. This would make the vertex storage faster, 
+     * with the vertex positions being modified through memory instead of through
+     * the CPU bound matrix calculations. The matrix calculation is definitely easier (was implemented)
+     * but I think it's a better idea to actually go the way of a dynamic vertex buffer
      */
+
+    let (default_vertex_buffer, default_index_buffer) = {
+        /* Need to store Background, Paddle and Ball */
+        struct Vertex {
+            position: [f32; 2],
+        }
+        implement_vertex!(Vertex, position);
+
+        let vb = Vec::with_capacity(3 * 4);
+        let ib = Vec::with_capacity(3 * 6);
+
+        /* Add Background */
+        vb.push( Vertex { position: [0.0, 0.0]});
+        vb.push( Vertex)
+    };
 
     let vertex_shader_src = r#"
         #version 140
@@ -461,7 +481,7 @@ fn main() {
         }
     "#;
 
-    let default_program = glium::program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let default_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
     let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
 
