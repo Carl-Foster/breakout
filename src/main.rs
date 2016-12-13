@@ -429,7 +429,7 @@ fn main() {
      * This seems dumb in retrospect since only need to draw Background, Ball and Paddle.
      */
 
-    let (default_vertex_buffer, default_index_buffer) = {
+    let (background_vertices, background_indices) = {
         /* Need to store Background, Paddle and Ball */
         #[derive(Copy, Clone)]
         struct Vertex {
@@ -437,15 +437,29 @@ fn main() {
         }
         implement_vertex!(Vertex, position);
 
-        let vb = Vec::with_capacity(3 * 4);
-        let ib = Vec::with_capacity(3 * 6);
+        let mut vb_data = Vec::with_capacity(4);
+        let mut ib_data: Vec<u16> = Vec::with_capacity(6);
 
         /* Add Background */
-        vb.push( Vertex { position: [0.0, 0.0]});
-        vb.push( Vertex { position: [SCREEN_WIDTH as f32, 0.0]});
-        vb.push( Vertex { position: [0.0, SCREEN_HEIGHT as f32]});
-        vb.push( Vertex { position: [SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32]});
+        vb_data.push( Vertex { position: [0.0, 0.0]});
+        vb_data.push( Vertex { position: [SCREEN_WIDTH as f32, 0.0]});
+        vb_data.push( Vertex { position: [0.0, SCREEN_HEIGHT as f32]});
+        vb_data.push( Vertex { position: [SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32]});
+
+        ib_data.push(0);
+        ib_data.push(1);
+        ib_data.push(2);
+        ib_data.push(1);
+        ib_data.push(3);
+        ib_data.push(2);
+
+        let vb = glium::VertexBuffer::new(&display, &vb_data).unwrap();
+        let ib = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &ib_data).unwrap();
+
+        (vb, ib)
     };
+
+    let background_texture = load_texture_from_file("textures/background.jpg", &display);
 
     let vertex_shader_src = r#"
         #version 140
@@ -475,11 +489,10 @@ fn main() {
         #version 140
 
         in vec2 v_tex_coords;
-
-        uniform sampler2d tex;
-        
         out vec4 color;
 
+        uniform sampler2D tex;
+        
         void main() {
             color = texture(tex, v_tex_coords);
         }
@@ -488,7 +501,7 @@ fn main() {
     let default_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
     let perspective: [[f32; 4]; 4] = {
-        let persp = cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+        let persp: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
         Into::<[[f32; 4]; 4]>::into(persp)
     };
 
@@ -542,7 +555,7 @@ fn main() {
             };
 
             target.draw(&block_vertices,
-                    &block_indices,
+                    &block_indexes,
                     &block_program,
                     &uniforms,
                     &params)
