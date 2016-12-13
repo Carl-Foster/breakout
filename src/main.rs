@@ -305,7 +305,7 @@ fn main() {
 
     let (level_rows, level_columns) = (level_data.len() as f32, level_data[0].len() as f32);
 
-    let (vertex_buffer, index_buffer) = {
+    let (block_vertices, block_indexes) = {
         #[derive(Copy, Clone)]
         struct Vertex {
             position: [f32; 2],
@@ -426,10 +426,12 @@ fn main() {
      * with the vertex positions being modified through memory instead of through
      * the CPU bound matrix calculations. The matrix calculation is definitely easier (was implemented)
      * but I think it's a better idea to actually go the way of a dynamic vertex buffer
+     * This seems dumb in retrospect since only need to draw Background, Ball and Paddle.
      */
 
     let (default_vertex_buffer, default_index_buffer) = {
         /* Need to store Background, Paddle and Ball */
+        #[derive(Copy, Clone)]
         struct Vertex {
             position: [f32; 2],
         }
@@ -440,7 +442,9 @@ fn main() {
 
         /* Add Background */
         vb.push( Vertex { position: [0.0, 0.0]});
-        vb.push( Vertex)
+        vb.push( Vertex { position: [SCREEN_WIDTH as f32, 0.0]});
+        vb.push( Vertex { position: [0.0, SCREEN_HEIGHT as f32]});
+        vb.push( Vertex { position: [SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32]});
     };
 
     let vertex_shader_src = r#"
@@ -483,7 +487,10 @@ fn main() {
 
     let default_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
-    let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+    let perspective: [[f32; 4]; 4] = {
+        let persp = cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+        Into::<[[f32; 4]; 4]>::into(persp)
+    };
 
     let params = glium::DrawParameters {
         blend: glium::Blend::alpha_blending(),
@@ -512,18 +519,36 @@ fn main() {
         // Clears to black
         target.clear_color(0.0, 0.0, 0.0, 1.0);
 
-        let uniforms = uniform! {
-            tex: &textures,
-            projection: Into::<[[f32; 4]; 4]>::into(perspective),
-        };
+        // Draw background, paddle and ball
+        {
+            let uniforms = uniform! {
+                projection: perspective,
+                tex: &background_texture
+            };
 
-        target.draw(&vertex_buffer,
-                &index_buffer,
-                &block_program,
-                &uniforms,
-                &params)
-            .unwrap();  
+            target.draw(&background_vertices,
+                    &background_indices,
+                    &default_program,
+                    &uniforms,
+                    &params)
+                .unwrap();
+        }
 
+        // Draw blocks
+        {
+            let uniforms = uniform! {
+                tex: &textures,
+                projection: perspective,
+            };
+
+            target.draw(&block_vertices,
+                    &block_indices,
+                    &block_program,
+                    &uniforms,
+                    &params)
+                .unwrap();  
+        }
+        
         target.finish().unwrap();
 
         events.poll(&display);
