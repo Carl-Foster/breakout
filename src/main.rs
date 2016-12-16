@@ -24,12 +24,18 @@ struct_events!{
     }
 }
 
+#[derive(Copy, Clone)]
+struct Vertex {
+    position: [f32; 2],
+}
+implement_vertex!(Vertex, position);
+
 
 
 const SCREEN_WIDTH: u32 = 800;
 const SCREEN_HEIGHT: u32 = 600;
 const PLAYER_SIZE: Vector2<f32> = Vector2{x: 100.0, y: 20.0};
-const PLAYER_VELOCIT: f32 = 500.0;
+const PLAYER_VELOCITY: f32 = 500.0;
 
 #[derive(Debug)]
 enum GameState {
@@ -305,19 +311,19 @@ fn main() {
 
     let (level_rows, level_columns) = (level_data.len() as f32, level_data[0].len() as f32);
 
-    let (vertex_buffer, index_buffer) = {
+    let (block_vertices, block_indexes) = {
         #[derive(Copy, Clone)]
-        struct Vertex {
+        struct BlockVertex {
             position: [f32; 2],
             tex_id: u32,
             color: [f32; 3],
         }
 
-        implement_vertex!(Vertex, position, tex_id, color);
+        implement_vertex!(BlockVertex, position, tex_id, color);
 
         let block_count = (level_rows * level_columns) as usize;
 
-        let mut vb_data: Vec<Vertex> = Vec::with_capacity(block_count * 4);
+        let mut vb_data: Vec<BlockVertex> = Vec::with_capacity(block_count * 4);
         let mut ib_data = Vec::with_capacity(block_count * 6);
 
         let (unit_width, unit_height) = (SCREEN_WIDTH as f32 / level_columns, (SCREEN_HEIGHT as f32/ 2.0) / level_rows);
@@ -333,9 +339,9 @@ fn main() {
                 let top = unit_height * y_pos as f32;
                 let bottom = top + unit_height;
                 let tex_id = match value {
-                    1 => texture_dict.get("block.png").unwrap(),
-                    2 ... 5 => texture_dict.get("block_solid.png").unwrap(),
-                    _ => texture_dict.get("block.png").unwrap(),
+                    1 => texture_dict.get("block_solid.png").unwrap(),
+                    2 ... 5 => texture_dict.get("block.png").unwrap(),
+                    _ => texture_dict.get("block_solid.png").unwrap(),
                 };
                 let color = {
                         match value {
@@ -348,10 +354,10 @@ fn main() {
                         }
                     };
                 
-                vb_data.push( Vertex { position: [left, top], tex_id: tex_id.clone(), color: color});
-                vb_data.push( Vertex { position: [right, top], tex_id: tex_id.clone(), color: color});
-                vb_data.push( Vertex { position: [left, bottom], tex_id: tex_id.clone(), color: color});
-                vb_data.push( Vertex { position: [right, bottom], tex_id: tex_id.clone(), color: color});
+                vb_data.push( BlockVertex { position: [left, top], tex_id: tex_id.clone(), color: color});
+                vb_data.push( BlockVertex { position: [right, top], tex_id: tex_id.clone(), color: color});
+                vb_data.push( BlockVertex { position: [left, bottom], tex_id: tex_id.clone(), color: color});
+                vb_data.push( BlockVertex { position: [right, bottom], tex_id: tex_id.clone(), color: color});
 
                 let num = block_counter as u16;
                 ib_data.push(num * 4);
@@ -416,9 +422,109 @@ fn main() {
         color = texture(tex, vec3(v_tex_coords, float(v_tex_id))) * vec4(v_color, 1.0);
     }"#;
 
-    let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let block_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
-    let perspective: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+    /* Add in vertex buffer for general objects
+     * Could go dynamic or go the old way with the object model
+     * being uploaded to uniform each draw call
+     * If it were to be dynamic, would only draw certain slices of an index_buffer
+     * at each draw call. This would make the vertex storage faster, 
+     * with the vertex positions being modified through memory instead of through
+     * the CPU bound matrix calculations. The matrix calculation is definitely easier (was implemented)
+     * but I think it's a better idea to actually go the way of a dynamic vertex buffer
+     * This seems dumb in retrospect since only need to draw Background, Ball and Paddle.
+     */
+
+    let (background_vertices, background_indices) = {
+        /* Need to store Background, Paddle and Ball */
+        
+
+        let mut vb_data = Vec::with_capacity(4);
+        let mut ib_data: Vec<u16> = Vec::with_capacity(6);
+
+        /* Add Background */
+        vb_data.push( Vertex { position: [0.0, 0.0]});
+        vb_data.push( Vertex { position: [SCREEN_WIDTH as f32, 0.0]});
+        vb_data.push( Vertex { position: [0.0, SCREEN_HEIGHT as f32]});
+        vb_data.push( Vertex { position: [SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32]});
+
+        ib_data.push(0);
+        ib_data.push(1);
+        ib_data.push(2);
+        ib_data.push(1);
+        ib_data.push(3);
+        ib_data.push(2);
+
+        let vb = glium::VertexBuffer::new(&display, &vb_data).unwrap();
+        let ib = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &ib_data).unwrap();
+
+        (vb, ib)
+    };
+
+    
+
+    let (paddle_vertices, paddle_indices) = {
+        let mut ib_data: Vec<u16> = Vec::with_capacity(6);
+
+        ib_data.push(0);
+        ib_data.push(1);
+        ib_data.push(2);
+        ib_data.push(1);
+        ib_data.push(3);
+        ib_data.push(2);
+
+        let vb = glium::VertexBuffer::empty_dynamic(&display, 4).unwrap();
+        let ib = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &ib_data).unwrap();
+
+        (vb, ib)
+    };
+
+    let background_texture = load_texture_from_file("textures/background.jpg", &display);
+    let paddle_texture = load_texture_from_file("textures/paddle.png", &display);
+
+    let vertex_shader_src = r#"
+        #version 140
+
+        in vec2 position;
+
+        uniform mat4 projection;
+
+        out vec2 v_tex_coords;
+
+        void main() {
+
+            if (gl_VertexID % 4 == 0) {
+                v_tex_coords = vec2(0.0, 1.0);
+            } else if (gl_VertexID % 4 == 1) {
+                v_tex_coords = vec2(1.0, 1.0);
+            } else if (gl_VertexID % 4 == 2) {
+                v_tex_coords = vec2(0.0, 0.0);
+            } else {
+                v_tex_coords = vec2(1.0, 0.0);
+            }
+            gl_Position = projection * vec4(position, 0.0, 1.0);
+        }
+    "#;
+
+    let fragment_shader_src = r#"
+        #version 140
+
+        in vec2 v_tex_coords;
+        out vec4 color;
+
+        uniform sampler2D tex;
+        
+        void main() {
+            color = texture(tex, v_tex_coords);
+        }
+    "#;
+
+    let default_program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+
+    let perspective: [[f32; 4]; 4] = {
+        let persp: cgmath::Matrix4<f32> = cgmath::ortho(0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32, 0.0, -1.0, 1.0);
+        Into::<[[f32; 4]; 4]>::into(persp)
+    };
 
     let params = glium::DrawParameters {
         blend: glium::Blend::alpha_blending(),
@@ -430,36 +536,115 @@ fn main() {
     let mut last_frame = Instant::now();
     let mut last_second = Instant::now();
     let mut fps = 0;
+    let mut elapsed = 0.0;
+
+    let mut paddle_position: Vector2<f32> = Vector2 {
+        x: (SCREEN_WIDTH / 2) as f32,
+        y: (SCREEN_HEIGHT as f32 - PLAYER_SIZE.y / 2.0) as f32,
+    };
 
     loop {
 
-        let dt = last_frame.elapsed().subsec_nanos() as f32 / 1.0e6; // ns -> ms
-        let elapsed = dt / 1.0e3; // ms -> s
-        last_frame = Instant::now();
-        fps += 1;
-        if last_frame.duration_since(last_second).as_secs() >= 1 {
-            println!("FPS: {:?}", fps);
-            last_second = Instant::now();
-            fps = 0;
+        // Handle FPS
+        {
+            let dt = last_frame.elapsed().subsec_nanos() as f32 / 1.0e6; // ns -> ms
+            elapsed = dt / 1.0e3; // ms -> s
+            last_frame = Instant::now();
+            fps += 1;
+            if last_frame.duration_since(last_second).as_secs() >= 1 {
+                println!("FPS: {:?}; Paddle Position: {:?}", fps, paddle_position);
+                last_second = Instant::now();
+                fps = 0;
+            }
         }
 
-        let mut target = display.draw();
-        // Clears to black
-        target.clear_color(0.0, 0.0, 0.0, 1.0);
+        // Ball movement and collision checking
 
-        let uniforms = uniform! {
-            tex: &textures,
-            projection: Into::<[[f32; 4]; 4]>::into(perspective),
-        };
+        // Handle events
+        {
+            let velocity = PLAYER_VELOCITY * elapsed;
 
-        target.draw(&vertex_buffer,
-                &index_buffer,
-                &program,
-                &uniforms,
-                &params)
-            .unwrap();  
+            if events.key_left {
+                if paddle_position.x - PLAYER_SIZE.x / 2.0 >= 0.0 {
+                    paddle_position.x -= velocity;
+                }
+            }
+            if events.key_right {
+                if paddle_position.x + PLAYER_SIZE.x / 2.0 <= SCREEN_WIDTH as f32 {
+                    paddle_position.x += velocity;
+                }
+            }
+        }
 
-        target.finish().unwrap();
+        // Paddle location
+        {
+            let left = paddle_position.x - PLAYER_SIZE.x / 2.0;
+            let right = paddle_position.x + PLAYER_SIZE.x / 2.0;
+            let bottom = paddle_position.y + PLAYER_SIZE.y / 2.0;
+            let top = paddle_position.y - PLAYER_SIZE.y / 2.0;
+
+            let mut vb_data: Vec<Vertex> = Vec::with_capacity(4);
+            vb_data.push( Vertex { position: [left, top]});
+            vb_data.push( Vertex { position: [right, top]});
+            vb_data.push( Vertex { position: [left, bottom]});
+            vb_data.push( Vertex { position: [right, bottom]});
+
+            paddle_vertices.write(&vb_data);
+        }
+
+        // Draw graphics
+        {
+            let mut target = display.draw();
+            // Clears to black
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
+
+            // Draw background, paddle and ball
+            {
+                let uniforms = uniform! {
+                    projection: perspective,
+                    tex: &background_texture
+                };
+
+                target.draw(&background_vertices,
+                        &background_indices,
+                        &default_program,
+                        &uniforms,
+                        &params)
+                    .unwrap();
+            }
+
+            {
+                let uniforms = uniform! {
+                    projection: perspective,
+                    tex: &paddle_texture
+                };
+
+                target.draw(&paddle_vertices,
+                        &paddle_indices,
+                        &default_program,
+                        &uniforms,
+                        &params)
+                    .unwrap();
+            }
+
+            // Draw blocks
+            {
+                let uniforms = uniform! {
+                    tex: &textures,
+                    projection: perspective,
+                };
+
+                target.draw(&block_vertices,
+                        &block_indexes,
+                        &block_program,
+                        &uniforms,
+                        &params)
+                    .unwrap();  
+            }
+            
+            target.finish().unwrap();
+        }
+        
 
         events.poll(&display);
         if events.now.quit || events.now.key_escape == Some(true) {
