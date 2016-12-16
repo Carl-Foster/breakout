@@ -505,51 +505,62 @@ fn main() {
 
     loop {
 
-        let dt = last_frame.elapsed().subsec_nanos() as f32 / 1.0e6; // ns -> ms
-        let elapsed = dt / 1.0e3; // ms -> s
-        last_frame = Instant::now();
-        fps += 1;
-        if last_frame.duration_since(last_second).as_secs() >= 1 {
-            println!("FPS: {:?}", fps);
-            last_second = Instant::now();
-            fps = 0;
+        // Handle FPS
+        {
+            let dt = last_frame.elapsed().subsec_nanos() as f32 / 1.0e6; // ns -> ms
+            let elapsed = dt / 1.0e3; // ms -> s
+            last_frame = Instant::now();
+            fps += 1;
+            if last_frame.duration_since(last_second).as_secs() >= 1 {
+                println!("FPS: {:?}", fps);
+                last_second = Instant::now();
+                fps = 0;
+            }
         }
 
-        let mut target = display.draw();
-        // Clears to black
-        target.clear_color(0.0, 0.0, 0.0, 1.0);
+        // Ball movement and collision checking
 
-        // Draw background, paddle and ball
+        // Paddle movement
+
+        // Draw graphics
         {
-            let uniforms = uniform! {
-                projection: perspective,
-                tex: &background_texture
-            };
+            let mut target = display.draw();
+            // Clears to black
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
 
-            target.draw(&background_vertices,
-                    &background_indices,
-                    &default_program,
-                    &uniforms,
-                    &params)
-                .unwrap();
-        }
+            // Draw background, paddle and ball
+            {
+                let uniforms = uniform! {
+                    projection: perspective,
+                    tex: &background_texture
+                };
 
-        // Draw blocks
-        {
-            let uniforms = uniform! {
-                tex: &textures,
-                projection: perspective,
-            };
+                target.draw(&background_vertices,
+                        &background_indices,
+                        &default_program,
+                        &uniforms,
+                        &params)
+                    .unwrap();
+            }
 
-            target.draw(&block_vertices,
-                    &block_indices,
-                    &block_program,
-                    &uniforms,
-                    &params)
-                .unwrap();  
+            // Draw blocks
+            {
+                let uniforms = uniform! {
+                    tex: &textures,
+                    projection: perspective,
+                };
+
+                target.draw(&block_vertices,
+                        &block_indices,
+                        &block_program,
+                        &uniforms,
+                        &params)
+                    .unwrap();  
+            }
+            
+            target.finish().unwrap();
         }
         
-        target.finish().unwrap();
 
         events.poll(&display);
         if events.now.quit || events.now.key_escape == Some(true) {
